@@ -66,14 +66,8 @@ h1 span { animation: flicker 3.7s infinite 1.3s; }
 }
 .rsvp:hover { background: #fff; }
 a:focus-visible, button:focus-visible, canvas:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
-.stage {
-  position: relative;
-  flex: none;
-  width: min(100%, max(280px, calc((100vh - 215px) * 1.348)));
-  width: min(100%, max(280px, calc((100dvh - 215px) * 1.348)));
-  aspect-ratio: 496 / 368;
-  max-width: 100%;
-}
+.stage { flex: 1 1 auto; align-self: stretch; min-height: 240px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.view { position: relative; flex: none; width: 100%; aspect-ratio: 496 / 368; }
 canvas { cursor: pointer; display: block; width: 100%; height: 100%; image-rendering: crisp-edges; image-rendering: pixelated; }
 .bubble {
   position: absolute;
@@ -84,7 +78,7 @@ canvas { cursor: pointer; display: block; width: 100%; height: 100%; image-rende
   font-size: 14px;
   line-height: 1.3;
   width: max-content;
-  max-width: 44%;
+  max-width: 62%;
   text-align: center;
   box-shadow: 0 0 0 2px var(--night), 0 0 0 4px var(--ink);
   display: flex;
@@ -96,23 +90,7 @@ canvas { cursor: pointer; display: block; width: 100%; height: 100%; image-rende
 footer { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .hint { margin: 0; color: var(--dim); font-size: 14px; text-align: center; text-wrap: balance; }
 .hint b { color: var(--gold); font-weight: 400; }
-.pad { display: none; grid-template-columns: repeat(3, 48px); grid-template-rows: repeat(2, 48px); gap: 6px; }
-.pad button {
-  font-family: var(--display);
-  font-size: 13px;
-  color: var(--ink);
-  background: var(--panel);
-  border: 2px solid var(--dim);
-  touch-action: none;
-  -webkit-user-select: none;
-  user-select: none;
-}
-.pad button:active { background: var(--pink); color: var(--night); }
-.pad [data-k="up"] { grid-column: 2; grid-row: 1; }
-.pad [data-k="left"] { grid-column: 1; grid-row: 2; }
-.pad [data-k="down"] { grid-column: 2; grid-row: 2; }
-.pad [data-k="right"] { grid-column: 3; grid-row: 2; }
-@media (pointer: coarse) { .pad { display: grid; } .keys { display: none; } }
+@media (pointer: coarse) { .keys { display: none; } }
 @media (prefers-reduced-motion: reduce) { h1, h1 span { animation: none; } }
 </style>
 
@@ -125,19 +103,15 @@ footer { display: flex; flex-direction: column; align-items: center; gap: 10px; 
   </div>
 </header>
 
-<div class="stage">
+<div class="stage" id="stage">
+ <div class="view" id="view">
   <canvas id="game" width="496" height="368" tabindex="0" role="img" aria-label="Isometric pixel-art izakaya at night with friends around a long table on the patio and cars passing on the road. You can walk a character around it.">An isometric pixel-art izakaya scene.</canvas>
   <div class="bubble" id="bubble" hidden><span id="bubbleText"></span><a id="bubbleLink" href="https://docs.google.com/spreadsheets/d/1lGvafPCoyiUUPQRKoA65USUNLEIeW3DRyIgRgKLZq24/edit" target="_blank" rel="noopener" hidden>Open the sheet</a></div>
+ </div>
 </div>
 
 <footer>
-  <p class="hint">Click or tap where you want to walk<span class="keys">, or use the arrow keys</span>. <b>Walk through the RSVP curtain</b> at the back to open the sign-up sheet.</p>
-  <div class="pad" aria-label="Move">
-    <button type="button" id="padUp" data-k="up" aria-label="Walk up">▲</button>
-    <button type="button" id="padLeft" data-k="left" aria-label="Walk left">◀</button>
-    <button type="button" id="padDown" data-k="down" aria-label="Walk down">▼</button>
-    <button type="button" id="padRight" data-k="right" aria-label="Walk right">▶</button>
-  </div>
+  <p class="hint">Tap or click where you want to walk<span class="keys">, or use the arrow keys</span>. <b>Walk through the RSVP curtain</b> at the back to open the sign-up sheet.</p>
 </footer>
 
 <script>
@@ -146,9 +120,24 @@ footer { display: flex; flex-direction: column; align-items: center; gap: 10px; 
   const W = D.W, H = D.H, OX = D.OX, OY = D.OY;
   const P = (x, y, z) => [Math.floor(OX + x - y), Math.floor(OY + (x + y) / 2 - (z || 0))];
   const cv = document.getElementById('game');
-  cv.width = W; cv.height = H;
   const ctx = cv.getContext('2d');
   ctx.imageSmoothingEnabled = false;
+  const stage = document.getElementById('stage'), view = document.getElementById('view');
+  let VW = W, VH = H, zoom = 1, camX = 0, camY = 0, camSet = false;
+  // desktop shows the whole scene; on a small screen the view zooms in and follows the character
+  function layout() {
+    const cw = stage.clientWidth, ch = stage.clientHeight;
+    if (!cw || !ch) return;
+    zoom = Math.max(Math.min(cw / W, ch / H), Math.min(1.7, Math.max(cw / W, ch / H)));
+    VW = Math.min(W, Math.floor(cw / zoom)); VH = Math.min(H, Math.floor(ch / zoom));
+    if (cv.width !== VW || cv.height !== VH) { cv.width = VW; cv.height = VH; }
+    ctx.imageSmoothingEnabled = false;
+    view.style.width = (VW * zoom) + 'px'; view.style.height = (VH * zoom) + 'px'; view.style.aspectRatio = 'auto';
+    camSet = false;
+  }
+  layout();
+  if (window.ResizeObserver) new ResizeObserver(layout).observe(stage);
+  window.addEventListener('resize', layout);
   const calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const B = D.boxes.map(a => ({ x0: a[0], x1: a[1], y0: a[2], y1: a[3], z0: a[4], z1: a[5], ax: a[6], ay: a[7], w: a[8], h: a[9], dx: a[10], dy: a[11] }));
@@ -202,13 +191,6 @@ footer { display: flex; flex-direction: column; align-items: center; gap: 10px; 
   });
   window.addEventListener('keyup', e => { const k = KEYMAP[e.code]; if (k) keys[k] = false; });
   window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
-  document.querySelectorAll('.pad button').forEach(b => {
-    const k = b.dataset.k;
-    const set = v => e => { keys[k] = v; e.preventDefault(); };
-    b.addEventListener('pointerdown', set(true));
-    ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => b.addEventListener(ev, set(false)));
-  });
-
   // click or tap to walk: breadth-first search over a 2-unit grid of standable spots
   const G = 2, GC = Math.floor((FX - PS) / G) + 1, GR = Math.floor((FY - PS) / G) + 1;
   const grid = new Uint8Array(GC * GR);
@@ -246,7 +228,7 @@ footer { display: flex; flex-direction: column; align-items: center; gap: 10px; 
   }
   cv.addEventListener('click', e => {
     const r = cv.getBoundingClientRect();
-    const sx = (e.clientX - r.left) * W / r.width - OX, sy = (e.clientY - r.top) * H / r.height - OY;
+    const sx = (e.clientX - r.left) * VW / r.width + Math.round(camX) - OX, sy = (e.clientY - r.top) * VH / r.height + Math.round(camY) - OY;
     walkTo(sy + sx / 2 - PS / 2, sy - sx / 2 - PS / 2);
   });
 
@@ -325,7 +307,15 @@ footer { display: flex; flex-direction: column; align-items: center; gap: 10px; 
       if (pl.y > 18) armed = true;
     }
 
+    function camera(dt) {
+      const q = P(pl.x + PS / 2, pl.y + PS / 2, 8);
+      const tx = Math.max(0, Math.min(W - VW, q[0] - VW / 2)), ty = Math.max(0, Math.min(H - VH, q[1] - VH / 2));
+      const k = camSet && !calm ? Math.min(1, dt * 5) : 1;
+      camX += (tx - camX) * k; camY += (ty - camY) * k; camSet = true;
+    }
+
     function draw(t) {
+      ctx.setTransform(1, 0, 0, 1, -Math.round(camX), -Math.round(camY));
       ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = 'source-over';
       ctx.drawImage(I.bg, 0, 0);
@@ -392,15 +382,16 @@ footer { display: flex; flex-direction: column; align-items: center; gap: 10px; 
       const cx = pl.x + PS / 2, cy = pl.y + PS / 2;
       let best = null;
       for (const s of SPOTS) { if (Math.hypot(s.x - cx, s.y - cy) < s.r) { best = s; break; } }
-      if (best === spot) return;
-      spot = best;
-      if (!spot) { bubble.hidden = true; return; }
-      const q = P(spot.x, spot.y, spot.z);
-      bubble.style.left = Math.max(24, Math.min(76, q[0] / W * 100)) + '%';
-      bubble.style.top = (q[1] / H * 100) + '%';
-      bubbleText.textContent = spot.text;
-      bubbleLink.hidden = !spot.link;
-      bubble.hidden = false;
+      if (best !== spot) {
+        spot = best;
+        bubble.hidden = !spot;
+        if (spot) { bubbleText.textContent = spot.text; bubbleLink.hidden = !spot.link; }
+      }
+      if (spot) {
+        const q = P(spot.x, spot.y, spot.z);
+        bubble.style.left = Math.max(26, Math.min(74, (q[0] - Math.round(camX)) / VW * 100)) + '%';
+        bubble.style.top = Math.max(16, Math.min(96, (q[1] - Math.round(camY)) / VH * 100)) + '%';
+      }
     }
 
     let last = 0;
@@ -411,10 +402,12 @@ footer { display: flex; flex-direction: column; align-items: center; gap: 10px; 
       step(dt);
       stepCars(t, dt);
       checkDoor();
+      camera(dt);
       updateBubble();
       draw(t);
       requestAnimationFrame(frame);
     }
+    camera(0);
     draw(0);
     requestAnimationFrame(frame);
   });
